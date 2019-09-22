@@ -5,17 +5,25 @@ import configparser
 
 config = configparser.ConfigParser()
 config.read('deploy.conf')
+print(list(config.keys()))
 
 app = Starlette(debug=True)
 
-@app.route('/')
+@app.route('/', methods=["POST"])
 async def homepage(request):
     data = await request.json()  # Github sends the payload as JSON
 
     # Check repository we have to update
-    repo = data["repository"]["full_name"]
+    repo = data.get("repository", {}).get("full_name")
+    if repo is None:
+        return JSONResponse({"status": 400, "message": "Unable to retrieve repository full name"})
 
-    return JSONResponse(dict(config))
+    if repo not in config:
+        return JSONResponse({"status": 400, "message": f"Unable to find repository {repo}"})
+
+    # TODO clone, compile, push to FTP
+
+    return JSONResponse({"status": 200, "message": f"Repo {repo} found"})
 
 
 if __name__ == '__main__':
