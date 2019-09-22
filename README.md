@@ -22,6 +22,7 @@ Use podman (or docker, if you really have to...) to build and deploy the image:
 
 Note that I am using Z flag here to ensure reading permissions.
 
-You will probably need to create a configuration file first, for that, run the
-docker with the command `rclone config` and follow the procedure for your FTP.
+You will probably need to create a configuration file first. For that, create
+the `config` directory and run the docker with the command `rclone config`,
+then follow the procedure for your FTP.
 Run that command every time you need to support another FTP server.
