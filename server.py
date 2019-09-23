@@ -8,7 +8,7 @@ from starlette.applications import Starlette
 from starlette.responses import JSONResponse
 
 
-VERSION = "0.0.1"
+VERSION = "0.1.0"
 
 config = configparser.ConfigParser()
 config.read('deploy.conf')
