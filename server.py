@@ -3,6 +3,8 @@ from starlette.responses import JSONResponse
 import uvicorn
 import configparser
 
+VERSION = "0.0.1"
+
 config = configparser.ConfigParser()
 config.read('deploy.conf')
 print(list(config.keys()))
