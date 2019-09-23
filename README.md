@@ -26,3 +26,13 @@ You will probably need to create a configuration file first. For that, create
 the `config` directory and run the docker with the command `rclone config`,
 then follow the procedure for your FTP.
 Run that command every time you need to support another FTP server.
+
+## Configuration
+
+TODO
+
+# Important notes
+
+ - The current code assumes that public is the output directory of the
+   hugo website. Please, make sure your hugo project compiles correctly and
+   outputs in that directory.
