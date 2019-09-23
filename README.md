@@ -22,17 +22,30 @@ Use podman (or docker, if you really have to...) to build and deploy the image:
 
 Note that I am using Z flag here to ensure reading permissions.
 
+## Configuration
+
 You will probably need to create a configuration file first. For that, create
 the `config` directory and run the docker with the command `rclone config`,
 then follow the procedure for your FTP.
 Run that command every time you need to support another FTP server.
 
-## Configuration
+In the `deploy.conf` file you have to configure the websites that you want to
+deploy. The purposes are multiple:
 
-TODO
+ 1. ensure your are deploying only authorized repositories
+ 2. provide rclone deploy target, e.g. `luogoideale:/htdocs/`
+ 3. (optionally) provide hugo source folder (default is `public`)
 
-# Important notes
+An example configuration is the following:
 
- - The current code assumes that public is the output directory of the
-   hugo website. Please, make sure your hugo project compiles correctly and
-   outputs in that directory.
+    [pigreco-luogoideale/hugo-site]
+    rclone_target = luogoideale:/htdocs/
+    secret = expected_github_secret
+
+In this case, `rclone_target` is the name and directory where rclone will copy
+the content of the `public` directory, created by hugo. The target name,
+`luogoideale`, is the one chosen during `rclone config`.
+
+The (currently unused) field `secret` is checked against the github secret
+provided in webhook configuration, providing a basic check that the deploy is
+authorized.
