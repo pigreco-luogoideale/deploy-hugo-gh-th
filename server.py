@@ -1,3 +1,5 @@
+import hmac
+import hashlib
 import logging
 import uvicorn
 import subprocess
@@ -32,6 +34,15 @@ async def homepage(request):
 
     if repo not in config:
         return JSONResponse({"status": 400, "message": f"Unable to find repository {repo}"})
+
+    # Ensure payload is authorized
+    x_hub_signature = request.headers["X-Hub-Signature"]
+    secret = config[repo].get("secret")
+    sha1 = hashlib.sha1()
+    sha1.update(secret.encode())
+    sha1 = sha1.hexdigest()
+    if secret is not None and hmac.compare_digest(sha1, x_hub_signature):
+        return JSONResponse({"status": 400, "message": "Not authorized"})
 
     rclone_source = config[repo].get("rclone_source", "public/")
     rclone_target = config[repo].get("rclone_target")
