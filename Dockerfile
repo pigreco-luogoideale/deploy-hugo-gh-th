@@ -5,8 +5,8 @@ FROM alpine:3.10
 
 # We need curl for downloading rclone
 RUN apk add curl 
-RUN curl -s -O https://downloads.rclone.org/rclone-current-linux-amd64.zip
-RUN unzip rclone-current-linux-amd64.zip
+RUN curl -s -O https://downloads.rclone.org/v1.55.0/rclone-v1.55.0-linux-amd64.zip
+RUN unzip rclone-v1.55.0-linux-amd64.zip
 RUN cp /rclone-*-linux-amd64/rclone /
 
 # Download hugo as well, then unpack
