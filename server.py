@@ -31,11 +31,13 @@ async def homepage(request):
     # Check repository we have to update
     repo = data.get("repository", {}).get("full_name")
     if repo is None:
+        logging.error("Unable to retrieve repository full name")
         return JSONResponse(
             {"message": "Unable to retrieve repository full name"}, status_code=400
         )
 
     if repo not in config:
+        logging.error(f"Unable to find repo {repo}")
         return JSONResponse(
             {"message": f"Unable to find repository {repo}"}, status_code=400
         )
@@ -50,11 +52,13 @@ async def homepage(request):
             "sha1=" + hmac.new(secret.encode("utf-8"), body, hashlib.sha1).hexdigest()
         )
         if not hmac.compare_digest(signature, x_hub_signature):
+            logging.error("Not authorized")
             return JSONResponse({"message": "Not authorized"}, status_code=400)
 
     rclone_source = config[repo].get("rclone_source", "public/")
     rclone_target = config[repo].get("rclone_target")
     if rclone_target is None:
+        logging.error(f"Missing rclone target in config for {repo}")
         return JSONResponse(
             {"message": f"Missing rclone target in config for {repo}"}, status_code=400
         )
@@ -62,6 +66,7 @@ async def homepage(request):
     # Retrieve the URL of the repo to clone
     clone_url = data.get("repository", {}).get("clone_url")
     if clone_url is None:
+        logging.error("No clone_repository key found")
         return JSONResponse(
             {"message": "No clone_repository key found"}, status_code=400
         )
@@ -77,19 +82,36 @@ async def homepage(request):
         status = subprocess.run(["git", "clone", clone_url, repo], cwd=repos_dir)
 
     if status.returncode != 0:
-        return JSONResponse({"message": f"Unable to checkout repo"}, status_code=400)
+        logging.error("Unable to checkout repo")
+        return JSONResponse({"message": "Unable to checkout repo"}, status_code=400)
 
     # We now have the repo, go there and build, cleaning destination
-    status = subprocess.run(["hugo", "--cleanDestinationDir"], cwd=(repos_dir / repo))
+    status = subprocess.run(
+        ["hugo", "--cleanDestinationDir"],
+        cwd=(repos_dir / repo),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     if status.returncode != 0:
-        return JSONResponse({"message": "Unable to compile hugo site"}, status_code=400)
+        logging.error("Unable to compile hugo site")
+        return JSONResponse(
+            {"message": "Unable to compile hugo site", "log": status.stdout},
+            status_code=400,
+        )
 
     # Great, the site was compiled! Now upload it to ftp
     status = subprocess.run(
-        ["rclone", "copy", "-v", rclone_source, rclone_target], cwd=(repos_dir / repo)
+        ["rclone", "copy", "-vv", rclone_source, rclone_target],
+        cwd=(repos_dir / repo),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
     )
     if status.returncode != 0:
-        return JSONResponse({"message": "Unable to compile hugo site"}, status_code=400)
+        logging.error("Unable to upload to FTP")
+        return JSONResponse(
+            {"message": "Unable to upload to FTP", "log": status.stdout},
+            status_code=400,
+        )
 
     return JSONResponse({"message": f"Repo {repo} successfully deployed!"})
 
