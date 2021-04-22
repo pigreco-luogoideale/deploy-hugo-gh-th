@@ -79,8 +79,8 @@ async def homepage(request):
     if status.returncode != 0:
         return JSONResponse({"message": f"Unable to checkout repo"}, status_code=400)
 
-    # We now have the repo, go there and build
-    status = subprocess.run(["hugo"], cwd=(repos_dir / repo))
+    # We now have the repo, go there and build, cleaning destination
+    status = subprocess.run(["hugo", "--cleanDestinationDir"], cwd=(repos_dir / repo))
     if status.returncode != 0:
         return JSONResponse({"message": "Unable to compile hugo site"}, status_code=400)
 
