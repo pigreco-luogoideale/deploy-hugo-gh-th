@@ -94,23 +94,29 @@ async def homepage(request):
     )
     if status.returncode != 0:
         logging.error("Unable to compile hugo site")
+        log = status.stdout.decode()
+        for line in log.splitlines():
+            logging.error(line)
         return JSONResponse(
-            {"message": "Unable to compile hugo site", "log": status.stdout},
+            {"message": "Unable to compile hugo site", "log": log},
             status_code=400,
         )
 
     # Great, the site was compiled! Now upload it to ftp
-    logging.info(f"Running rclone copy -vv {rclone_source} {rclone_target}")
+    logging.info(f"Running rclone copy -v {rclone_source} {rclone_target}")
     status = subprocess.run(
-        ["rclone", "copy", "-vv", rclone_source, rclone_target],
+        ["rclone", "copy", "-v", rclone_source, rclone_target],
         cwd=(repos_dir / repo),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
     if status.returncode != 0:
         logging.error("Unable to upload to FTP")
+        log = status.stdout.decode()
+        for line in log.splitlines():
+            logging.error(line)
         return JSONResponse(
-            {"message": "Unable to upload to FTP", "log": status.stdout},
+            {"message": "Unable to upload to FTP", "log": log},
             status_code=400,
         )
 
