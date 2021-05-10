@@ -103,7 +103,7 @@ async def homepage(request):
         )
 
     # Great, the site was compiled! Now upload it to ftp
-    logging.info(f"Running rclone copy -v {rclone_source} {rclone_target}")
+    logging.info(f"Running rclone sync -v {rclone_source} {rclone_target}")
     status = subprocess.run(
         ["rclone", "sync", "-v", rclone_source, rclone_target],
         cwd=(repos_dir / repo),
