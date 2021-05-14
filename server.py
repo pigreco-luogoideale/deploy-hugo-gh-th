@@ -55,12 +55,23 @@ async def homepage(request):
             logging.error("Not authorized")
             return JSONResponse({"message": "Not authorized"}, status_code=400)
 
+    # Get source and target directories for rclone
     rclone_source = config[repo].get("rclone_source", "public/")
     rclone_target = config[repo].get("rclone_target")
     if rclone_target is None:
         logging.error(f"Missing rclone target in config for {repo}")
         return JSONResponse(
             {"message": f"Missing rclone target in config for {repo}"}, status_code=400
+        )
+
+    # Handle branches
+    if config[repo].get("publish_branches", False):
+        # Branches can be published, determine the subdir for publication
+        # Get the refs
+        branch_name = data.get("ref").split("/")[-1]
+        logging.info("Publishing branch with name %s", branch_name)
+        return JSONResponse(
+            {"message": "Publishing branches not implemented yet"}, status_code=400
         )
 
     # Retrieve the URL of the repo to clone
@@ -87,18 +98,18 @@ async def homepage(request):
 
     # We now have the repo, go there and build, cleaning destination
     status = subprocess.run(
-        ["hugo", "--cleanDestinationDir"],
+        ["zola", "build"],
         cwd=(repos_dir / repo),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
     if status.returncode != 0:
-        logging.error("Unable to compile hugo site")
+        logging.error("Unable to compile zola site")
         log = status.stdout.decode()
         for line in log.splitlines():
             logging.error(line)
         return JSONResponse(
-            {"message": "Unable to compile hugo site", "log": log},
+            {"message": "Unable to compile zola site", "log": log},
             status_code=400,
         )
 
