@@ -13,12 +13,12 @@ RUN cp /rclone-${RCLONE_VERSION}-linux-amd64/rclone /
 # Download hugo and unpack
 ARG HUGO_VERSION=0.58.3
 ADD https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_Linux-64bit.tar.gz /tmp
-RUN tar -xf /tmp/hugo_${HUGO_VERSION}_Linux-64bit.tar.gz -C /tmp
+RUN tar -xf /tmp/hugo_${HUGO_VERSION}_Linux-64bit.tar.gz -C /tmp && chown root:root /tmp/hugo
 
 # Download zola and unpack
 ARG ZOLA_VERSION=0.13.0
 ADD https://github.com/getzola/zola/releases/download/v${ZOLA_VERSION}/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz /tmp
-RUN tar -xf /tmp/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz -C /tmp
+RUN tar -xf /tmp/zola-v${ZOLA_VERSION}-x86_64-unknown-linux-gnu.tar.gz -C /tmp && chown root:root /tmp/zola
 
 #
 # Second stage: prepare image with rclone and python
