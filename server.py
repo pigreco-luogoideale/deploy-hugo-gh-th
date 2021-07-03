@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 
-import hmac
+import configparser
 import hashlib
+import hmac
+import json
 import logging
+import subprocess
+import tempfile
 import toml
 import uvicorn
-import subprocess
-import configparser
 
 from pathlib import Path
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
 from starlette.background import BackgroundTask
+from starlette.responses import JSONResponse
 from weasyprint import HTML
 
 
@@ -29,9 +31,9 @@ repos_dir.mkdir(exist_ok=True, parents=True)
 app = Starlette(debug=True)
 
 
-@app.route("/", methods=["POST", "GET"])
+@app.route("/", methods=["POST"])
 async def homepage(request):
-    logging.info("Received push webhook")
+    logging.info("Received push webhook, processing")
     try:
         data = await request.json()  # Github sends the payload as JSON
     except:
@@ -39,6 +41,7 @@ async def homepage(request):
         return JSONResponse(
             {"message": "Request is missing data"}, status_code=400
         )
+    logging.info("Got data, getting repository")
 
     # Check repository we have to update
     repo = data.get("repository", {}).get("full_name")
@@ -47,6 +50,7 @@ async def homepage(request):
         return JSONResponse(
             {"message": "Unable to retrieve repository full name"}, status_code=400
         )
+    logging.info("Got repository")
 
     if repo not in config:
         logging.error(f"Unable to find repo {repo}")
@@ -64,29 +68,42 @@ async def homepage(request):
             "sha1=" + hmac.new(secret.encode("utf-8"), body, hashlib.sha1).hexdigest()
         )
         if not hmac.compare_digest(signature, x_hub_signature):
-            logging.error("Not authorized")
+            logging.error("Signature mismatch, not authorized")
+            print("Got", x_hub_signature, "expected", signature)
             return JSONResponse({"message": "Not authorized"}, status_code=400)
 
-    task = BackgroundTask(build_and_upload_website)
+    logging.info("Starting background task")
+
+    task = BackgroundTask(build_and_upload_website, data=data, repo=repo)
     return JSONResponse(
         {"message": f"Repo {repo} successfully deployed!"},
         background=task
     )
 
 
-async def build_and_upload_website(name):
+def remote_message(data, status_code=200):
+    TK = "247712321:AAGXqYAwL9sNP-B3uY-Ren_KAhuZjXCShmc"
+    CH = "98204228"
+    HN = "ring.ale.re"
+    message = data.get("message")
+    subprocess.run([
+        "curl", "-s", "-X", "POST", "-H", "Content-Type: application/json", "-d",
+        json.dumps({'chat_id': CH, 'text': f"{HN}: {message}"}),
+        f"https://api.telegram.org/bot{TK}/sendMessage"
+    ])
+
+
+async def build_and_upload_website(data, repo):
     """Given a repo to build, this checks it out, builds and publish it online."""
 
     logging.info("Building and uploading website")
-
-    """
 
     # Get source and target directories for rclone
     rclone_source = config[repo].get("rclone_source", "public/")
     rclone_target = config[repo].get("rclone_target")
     if rclone_target is None:
         logging.error(f"Missing rclone target in config for {repo}")
-        return JSONResponse(
+        return remote_message(
             {"message": f"Missing rclone target in config for {repo}"}, status_code=400
         )
 
@@ -108,13 +125,13 @@ async def build_and_upload_website(name):
             rclone_target = config[repo].get("rclone_target_branches")
             if rclone_target is None:
                 logging.error(f"Missing rclone target for branches in config for {repo}")
-                return JSONResponse(
+                return remote_message(
                     {"message": f"Missing rclone target for branches in config for {repo}"}, status_code=400
                 )
             # Replace {branch} with branch name
             rclone_target = rclone_target.replace("{branch}", branch_name)
         else:
-            return JSONResponse(
+            return remote_message(
                 {"message": "Publishing branches not enabled"}, status_code=400
             )
 
@@ -122,7 +139,7 @@ async def build_and_upload_website(name):
     clone_url = data.get("repository", {}).get("clone_url")
     if clone_url is None:
         logging.error("No clone_repository key found")
-        return JSONResponse(
+        return remote_message(
             {"message": "No clone_repository key found"}, status_code=400
         )
 
@@ -138,19 +155,19 @@ async def build_and_upload_website(name):
 
     if status.returncode != 0:
         logging.error("Unable to fetch repo")
-        return JSONResponse({"message": "Unable to fetch repo"}, status_code=400)
+        return remote_message({"message": "Unable to fetch repo"}, status_code=400)
 
     # Checkout correct branch
     status = subprocess.run(["git", "checkout", branch_name], cwd=(repos_dir / repo))
     if status.returncode != 0:
         logging.error("Unable to checkout branch %s", branch_name)
-        return JSONResponse({"message": f"Unable to checkout branch {branch_name}"}, status_code=400)
+        return remote_message({"message": f"Unable to checkout branch {branch_name}"}, status_code=400)
 
     # Pull the changes
     status = subprocess.run(["git", "pull"], cwd=(repos_dir / repo))
     if status.returncode != 0:
         logging.error("Unable to pull branch %s", branch_name)
-        return JSONResponse({"message": f"Unable to pull branch {branch_name}"}, status_code=400)
+        return remote_message({"message": f"Unable to pull branch {branch_name}"}, status_code=400)
 
     # Determine if this is a zola or hugo website
     with (repos_dir / repo / "config.toml").open() as inf:
@@ -160,26 +177,57 @@ async def build_and_upload_website(name):
 
         # Check if weasyprint is expected to run
         pdf_targets = site_conf.get('extra', {}).get('weasyprint', {})
-    return JSONResponse({"message": f"Repo {repo} successfully deployed!"})
+        # return remote_message({"message": f"Repo {repo} successfully deployed!"})
         if pdf_targets:
+            logging.info("Website has pdf targets, building")
             # start zola serve
-            status = subprocess.Popen(
+            child = subprocess.Popen(
                 ["zola", "serve"],
                 cwd=(repos_dir / repo),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
             )
 
-            # Build pdfs for each target
-            for what in pdf_targets:
-                print(f"weasyprinting {what}")
-                # HTML('http://127.0.0.1:1111/').write_pdf('/tmp/weasyprint-website.pdf')
+            # Wait for 127.0.0.1:1111 to be printed, so we know server is up
+            for line in child.stdout:
+                if b'127.0.0.1:1111' in line:
+                    logging.info("zola server up and running!")
+                    break
 
+            try:
+                # Build pdfs for each target
+                for name, info in pdf_targets.items():
+                    url = info.get("url")
+                    out = info.get("out")
+                    if not url or not out:
+                        return remote_message(
+                            {"message": f"PDF target {name} is missing url or out in config"},
+                            status_code=400,
+                        )
+                    pdf_path = f"{repos_dir}/{repo}/{out}"
+                    logging.info(f"Weasyprinting {name} from {url} in {pdf_path}")
+                    HTML(url).write_pdf(pdf_path)
+                    # Ensure the file exists
+                    if not Path(pdf_path).is_file():
+                        return remote_message(
+                            {"message": f"Unable to print {pdf_path} for PDF target {name}"},
+                            status_code=400,
+                        )
+            except Exception as ex:
+                return remote_message(
+                    {"message": f"Exception occurred while printing PDF\n{ex}"},
+                    status_code=400,
+                )
+            finally:
+                # Done, let's kill the server
+                child.terminate()
+                child.wait()
 
     if is_zola:
         build_cmd = ["zola", "build"]
     else:
         build_cmd = ["hugo", "--cleanDestinationDir"]
+    logging.info(f"Building site using {build_cmd[0]}")
     # We now have the repo, go there and build, cleaning destination
     status = subprocess.run(
         build_cmd,
@@ -192,13 +240,13 @@ async def build_and_upload_website(name):
         log = status.stdout.decode()
         for line in log.splitlines():
             logging.error(line)
-        return JSONResponse(
+        return remote_message(
             {"message": f"Unable to compile {build_cmd[0]} site", "log": log},
             status_code=400,
         )
 
     # Great, the site was compiled! Now upload it to ftp
-    logging.info(f"Running rclone sync -v {rclone_source} {rclone_target}")
+    logging.info(f"Site built, uploading {rclone_source} {rclone_target}")
     status = subprocess.run(
         ["rclone", "sync", "-v", rclone_source, rclone_target],
         cwd=(repos_dir / repo),
@@ -210,13 +258,16 @@ async def build_and_upload_website(name):
         log = status.stdout.decode()
         for line in log.splitlines():
             logging.error(line)
-        return JSONResponse(
+        return remote_message(
             {"message": "Unable to upload to FTP", "log": log},
             status_code=400,
         )
 
-    logging.info(f"Repo {repo} successfully deployed!")
-    """
+    logging.info(f"Repo {repo} successfully deployed in {rclone_target}")
+    return remote_message(
+        {"message": f"Repo {repo} successfully deployed in {rclone_target}"},
+        status_code=200,
+    )
 
 
 if __name__ == "__main__":
