@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import hmac
 import hashlib
 import logging
@@ -9,6 +11,8 @@ import configparser
 from pathlib import Path
 from starlette.applications import Starlette
 from starlette.responses import JSONResponse
+from starlette.background import BackgroundTask
+from weasyprint import HTML
 
 
 VERSION = "0.2.1"
@@ -25,10 +29,16 @@ repos_dir.mkdir(exist_ok=True, parents=True)
 app = Starlette(debug=True)
 
 
-@app.route("/", methods=["POST"])
+@app.route("/", methods=["POST", "GET"])
 async def homepage(request):
     logging.info("Received push webhook")
-    data = await request.json()  # Github sends the payload as JSON
+    try:
+        data = await request.json()  # Github sends the payload as JSON
+    except:
+        logging.info("Request has no json data associated")
+        return JSONResponse(
+            {"message": "Request is missing data"}, status_code=400
+        )
 
     # Check repository we have to update
     repo = data.get("repository", {}).get("full_name")
@@ -56,6 +66,20 @@ async def homepage(request):
         if not hmac.compare_digest(signature, x_hub_signature):
             logging.error("Not authorized")
             return JSONResponse({"message": "Not authorized"}, status_code=400)
+
+    task = BackgroundTask(build_and_upload_website)
+    return JSONResponse(
+        {"message": f"Repo {repo} successfully deployed!"},
+        background=task
+    )
+
+
+async def build_and_upload_website(name):
+    """Given a repo to build, this checks it out, builds and publish it online."""
+
+    logging.info("Building and uploading website")
+
+    """
 
     # Get source and target directories for rclone
     rclone_source = config[repo].get("rclone_source", "public/")
@@ -132,11 +156,30 @@ async def homepage(request):
     with (repos_dir / repo / "config.toml").open() as inf:
         site_conf = toml.load(inf)
         # Zola uses base_url while hugo uses baseURL
-        if 'base_url' in site_conf:
-            build_cmd = ["zola", "build"]
-        else:
-            build_cmd = ["hugo", "--cleanDestinationDir"]
+        is_zola = 'base_url' in site_conf
 
+        # Check if weasyprint is expected to run
+        pdf_targets = site_conf.get('extra', {}).get('weasyprint', {})
+    return JSONResponse({"message": f"Repo {repo} successfully deployed!"})
+        if pdf_targets:
+            # start zola serve
+            status = subprocess.Popen(
+                ["zola", "serve"],
+                cwd=(repos_dir / repo),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+            )
+
+            # Build pdfs for each target
+            for what in pdf_targets:
+                print(f"weasyprinting {what}")
+                # HTML('http://127.0.0.1:1111/').write_pdf('/tmp/weasyprint-website.pdf')
+
+
+    if is_zola:
+        build_cmd = ["zola", "build"]
+    else:
+        build_cmd = ["hugo", "--cleanDestinationDir"]
     # We now have the repo, go there and build, cleaning destination
     status = subprocess.run(
         build_cmd,
@@ -173,7 +216,7 @@ async def homepage(request):
         )
 
     logging.info(f"Repo {repo} successfully deployed!")
-    return JSONResponse({"message": f"Repo {repo} successfully deployed!"})
+    """
 
 
 if __name__ == "__main__":
