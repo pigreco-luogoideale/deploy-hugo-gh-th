@@ -12,15 +12,20 @@ Run the uvicorn server:
 
 # Deploy
 
-Use podman (or docker, if you really have to...) to build and deploy the image:
+Use nix to build and podman (or docker, if you have to) to deploy the image:
 
-    $ podman build -t deploy-hugo-gh-th .
-    $ podman run -it --rm \
-                 -p 8000:8000 \
-                 -v "$PWD/config:/root/.config/:Z" \
-                 deploy-hugo-gh-th
+    $ podman load < $(nix-build -A image)
+    $ podman run -it --rm -p 33099:8000 \
+                 -v "$PWD/config/:/.config/:Z" \
+                 -v "$PWD/repos:/autopub/repos:Z" \
+                 -v "$PWD/deploy.conf:/autopub/deploy.conf:Z" \
+                 localhost/deploy_app
 
-Note that I am using Z flag here to ensure reading permissions.
+Note that I am using Z flag here to ensure reading permissions. A few things
+are expected to be in place when running:
+ - `/.config/rclone/rclone.conf`
+ - `/autopub/deploy.conf` is the deploy configuration
+ - `/autopub/repos` is where repos are cached, it might be convenient to mount
 
 ## Configuration
 
