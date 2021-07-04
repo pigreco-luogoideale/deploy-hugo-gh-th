@@ -17,8 +17,6 @@ from starlette.responses import JSONResponse
 from weasyprint import HTML
 
 
-VERSION = "0.2.1"
-
 config = configparser.ConfigParser()
 config.read("deploy.conf")
 print(list(config.keys()))
@@ -26,6 +24,7 @@ print(list(config.keys()))
 # Ensure we have a dir for repos
 repos_dir = Path("repos")
 repos_dir.mkdir(exist_ok=True, parents=True)
+print("cwd:", Path.cwd(), "repos_dir:", repos_dir)
 
 # Application
 app = Starlette(debug=True)
