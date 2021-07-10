@@ -96,7 +96,7 @@ async def homepage(request):
     remote_message({"message": "All checks ok, background build started"})
 
     task = BackgroundTask(build_and_upload_website, data=data, repo=repo)
-    return remote_message(
+    return JSONResponse(
         {"message": f"Deployment of {repo} started successfully!"},
         background=task
     )
