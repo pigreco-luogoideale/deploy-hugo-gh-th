@@ -34,6 +34,7 @@ app = Starlette(debug=True)
 TK = os.environ.get("TG_TOKEN")
 CH = os.environ.get("TG_CHAT")
 HN = os.environ.get("TG_HOST")
+WU = os.environ.get("SLACK_WEBHOOK_URL")
 
 
 def remote_message(data, status_code=200):
@@ -47,7 +48,18 @@ def remote_message(data, status_code=200):
                 f"https://api.telegram.org/bot{TK}/sendMessage"
             ])
         except OSError:
-            logging.warn("Cannot send remote message via curl")
+            logging.warn("Cannot send remote message to telegram via curl")
+    if WU:
+        message = data.get("message")
+        # Run in background, if it doesn't work it's not really a problem
+        try:
+            subprocess.Popen([
+                "curl", "-s", "-X", "POST", "-H", "Content-type: application/json", "--data",
+                json.dumps({'text': message}), WU,
+            ])
+        except OSError:
+            logging.warn("Cannot send remote message to slack via curl")
+
     return JSONResponse(data)
 
 
@@ -93,9 +105,10 @@ async def homepage(request):
             return remote_message({"message": "Not authorized"}, status_code=400)
 
     logging.info("Starting background task")
-    remote_message({"message": "All checks ok, background build started"})
 
     task = BackgroundTask(build_and_upload_website, data=data, repo=repo)
+    remote_message({"message": "All checks ok, background build starting..."})
+
     return JSONResponse(
         {"message": f"Deployment of {repo} started successfully!"},
         background=task
@@ -104,8 +117,8 @@ async def homepage(request):
 
 async def build_and_upload_website(data, repo):
     """Given a repo to build, this checks it out, builds and publish it online."""
-
     logging.info("Building and uploading website")
+    remote_message({"message": "Background build started!"})
 
     # Get source and target directories for rclone
     rclone_source = config[repo].get("rclone_source", "public/")
@@ -281,4 +294,5 @@ async def build_and_upload_website(data, repo):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    remote_message({"message": "Build and deploy service started"})
     uvicorn.run(app, host="0.0.0.0", port=8000)
