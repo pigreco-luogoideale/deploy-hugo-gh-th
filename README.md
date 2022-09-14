@@ -14,12 +14,15 @@ Run the uvicorn server:
 
 Use nix to build and podman (or docker, if you have to) to deploy the image:
 
-    $ podman load < $(nix-build -A image)
+    $ podman load < $(nix build .#server_image)
     $ podman run -it --rm -p 33099:8000 \
                  -v "$PWD/config/:/.config/:Z" \
                  -v "$PWD/repos:/autopub/repos:Z" \
                  -v "$PWD/deploy.conf:/autopub/deploy.conf:Z" \
                  localhost/deploy_app
+
+While the image for GHA is built using `nix build .#gha_image` and uploaded to
+docker.io/akiross/zola-build-and-rclone
 
 Note that I am using Z flag here to ensure reading permissions. A few things
 are expected to be in place when running:

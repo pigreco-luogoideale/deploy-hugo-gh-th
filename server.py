@@ -17,6 +17,7 @@ from starlette.background import BackgroundTask
 from starlette.responses import JSONResponse
 from weasyprint import HTML
 
+version = "0.2.1"
 
 config = configparser.ConfigParser()
 config.read("deploy.conf")
@@ -42,21 +43,38 @@ def remote_message(data, status_code=200):
         message = data.get("message")
         # Run in background, if it doesn't work it's not really a problem
         try:
-            subprocess.Popen([
-                "curl", "-s", "-X", "POST", "-H", "Content-Type: application/json", "-d",
-                json.dumps({'chat_id': CH, 'text': f"{HN}: {message}"}),
-                f"https://api.telegram.org/bot{TK}/sendMessage"
-            ])
+            subprocess.Popen(
+                [
+                    "curl",
+                    "-s",
+                    "-X",
+                    "POST",
+                    "-H",
+                    "Content-Type: application/json",
+                    "-d",
+                    json.dumps({"chat_id": CH, "text": f"{HN}: {message}"}),
+                    f"https://api.telegram.org/bot{TK}/sendMessage",
+                ]
+            )
         except OSError:
             logging.warn("Cannot send remote message to telegram via curl")
     if WU:
         message = data.get("message")
         # Run in background, if it doesn't work it's not really a problem
         try:
-            subprocess.Popen([
-                "curl", "-s", "-X", "POST", "-H", "Content-type: application/json", "--data",
-                json.dumps({'text': message}), WU,
-            ])
+            subprocess.Popen(
+                [
+                    "curl",
+                    "-s",
+                    "-X",
+                    "POST",
+                    "-H",
+                    "Content-type: application/json",
+                    "--data",
+                    json.dumps({"text": message}),
+                    WU,
+                ]
+            )
         except OSError:
             logging.warn("Cannot send remote message to slack via curl")
 
@@ -70,9 +88,7 @@ async def homepage(request):
         data = await request.json()  # Github sends the payload as JSON
     except:
         logging.info("Request has no json data associated")
-        return remote_message(
-            {"message": "Request is missing data"}, status_code=400
-        )
+        return remote_message({"message": "Request is missing data"}, status_code=400)
     logging.info("Got data, getting repository")
 
     # Check repository we have to update
@@ -110,8 +126,7 @@ async def homepage(request):
     remote_message({"message": "All checks ok, background build starting..."})
 
     return JSONResponse(
-        {"message": f"Deployment of {repo} started successfully!"},
-        background=task
+        {"message": f"Deployment of {repo} started successfully!"}, background=task
     )
 
 
@@ -131,7 +146,9 @@ async def build_and_upload_website(data, repo):
 
     # Handle branches
     git_ref = data.get("ref").split("/")
-    branch_name = '/'.join(git_ref[2:])  # This includes / that are legal in branch names
+    branch_name = "/".join(
+        git_ref[2:]
+    )  # This includes / that are legal in branch names
     logging.info(f"Obtained git ref {git_ref} and branch name {branch_name}")
     default_branch = data.get("repository", {}).get("default_branch")
     logging.info(f"Default branch is {default_branch}")
@@ -146,9 +163,14 @@ async def build_and_upload_website(data, repo):
             # Override rclone target using the one for branches. Fail if unset
             rclone_target = config[repo].get("rclone_target_branches")
             if rclone_target is None:
-                logging.error(f"Missing rclone target for branches in config for {repo}")
+                logging.error(
+                    f"Missing rclone target for branches in config for {repo}"
+                )
                 return remote_message(
-                    {"message": f"Missing rclone target for branches in config for {repo}"}, status_code=400
+                    {
+                        "message": f"Missing rclone target for branches in config for {repo}"
+                    },
+                    status_code=400,
                 )
             # Replace {branch} with branch name
             rclone_target = rclone_target.replace("{branch}", branch_name)
@@ -183,22 +205,26 @@ async def build_and_upload_website(data, repo):
     status = subprocess.run(["git", "checkout", branch_name], cwd=(repos_dir / repo))
     if status.returncode != 0:
         logging.error("Unable to checkout branch %s", branch_name)
-        return remote_message({"message": f"Unable to checkout branch {branch_name}"}, status_code=400)
+        return remote_message(
+            {"message": f"Unable to checkout branch {branch_name}"}, status_code=400
+        )
 
     # Pull the changes
     status = subprocess.run(["git", "pull"], cwd=(repos_dir / repo))
     if status.returncode != 0:
         logging.error("Unable to pull branch %s", branch_name)
-        return remote_message({"message": f"Unable to pull branch {branch_name}"}, status_code=400)
+        return remote_message(
+            {"message": f"Unable to pull branch {branch_name}"}, status_code=400
+        )
 
     # Determine if this is a zola or hugo website
     with (repos_dir / repo / "config.toml").open() as inf:
         site_conf = toml.load(inf)
         # Zola uses base_url while hugo uses baseURL
-        is_zola = 'base_url' in site_conf
+        is_zola = "base_url" in site_conf
 
         # Check if weasyprint is expected to run
-        pdf_targets = site_conf.get('extra', {}).get('weasyprint', {})
+        pdf_targets = site_conf.get("extra", {}).get("weasyprint", {})
         # return remote_message({"message": f"Repo {repo} successfully deployed!"})
         if pdf_targets:
             logging.info("Website has pdf targets, building")
@@ -212,7 +238,7 @@ async def build_and_upload_website(data, repo):
 
             # Wait for 127.0.0.1:1111 to be printed, so we know server is up
             for line in child.stdout:
-                if b'127.0.0.1:1111' in line:
+                if b"127.0.0.1:1111" in line:
                     logging.info("zola server up and running!")
                     break
 
@@ -223,7 +249,9 @@ async def build_and_upload_website(data, repo):
                     out = info.get("out")
                     if not url or not out:
                         return remote_message(
-                            {"message": f"PDF target {name} is missing url or out in config"},
+                            {
+                                "message": f"PDF target {name} is missing url or out in config"
+                            },
                             status_code=400,
                         )
                     pdf_path = f"{repos_dir}/{repo}/{out}"
@@ -232,7 +260,9 @@ async def build_and_upload_website(data, repo):
                     # Ensure the file exists
                     if not Path(pdf_path).is_file():
                         return remote_message(
-                            {"message": f"Unable to print {pdf_path} for PDF target {name}"},
+                            {
+                                "message": f"Unable to print {pdf_path} for PDF target {name}"
+                            },
                             status_code=400,
                         )
             except Exception as ex:
@@ -275,6 +305,7 @@ async def build_and_upload_website(data, repo):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+    # TODO show the rclone stdout/stderr somewhere for error reporting
     if status.returncode != 0:
         logging.error("Unable to upload to FTP")
         log = status.stdout.decode()
